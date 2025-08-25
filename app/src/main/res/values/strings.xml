@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">LrcView</string>
+    <string name="next">下一个</string>
+    <string name="play">播放</string>
+    <string name="previous">上一个</string>
+    <string name="pause">暂停</string>
+    <string name="back">返回</string>
+    <string name="song_name">歌曲名称</string>
+    <string name="song_singer">歌手</string>
+    <string name="song_content">歌词内容</string>
+</resources>
