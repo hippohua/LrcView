@@ -1,5 +1,6 @@
 package com.cch.LrcView;
 
+import android.annotation.SuppressLint;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
@@ -111,6 +112,7 @@ public class LrcDetailActivity extends AppCompatActivity {
         });
     }
 
+    @SuppressLint("SetTextI18n")
     private void loadLrcData() {
         Intent intent = getIntent();
         String lrcContent = intent.getStringExtra("lrc_content");
@@ -122,7 +124,7 @@ public class LrcDetailActivity extends AppCompatActivity {
 
         // 设置默认值，把歌曲名和歌手连接成一个字符串
         if (songName != null){
-            if (artist != null || !artist.trim().isEmpty()){
+            if (artist != null){
                 songTitle.setText(songName + " - " + artist);
             }else {
                 songTitle.setText(songName);
@@ -149,6 +151,7 @@ public class LrcDetailActivity extends AppCompatActivity {
     }
 
     // 添加时间格式化方法
+    @SuppressLint("DefaultLocale")
     private String formatTime(long timeInMillis) {
         int totalSeconds = (int) (timeInMillis / 1000);
         int minutes = totalSeconds / 60;
@@ -242,7 +245,7 @@ public class LrcDetailActivity extends AppCompatActivity {
 
         // 计算当前行的顶部和底部位置
         int lineTop = layout.getLineTop(currentLineIndex);
-        int lineBottom = layout.getLineBottom(currentLineIndex);
+//        int lineBottom = layout.getLineBottom(currentLineIndex);
 
         // 计算屏幕中心位置
         int screenHeight = lrcText.getHeight();

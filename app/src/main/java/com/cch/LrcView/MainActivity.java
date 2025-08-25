@@ -9,11 +9,12 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
-import android.provider.DocumentsContract;
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 import android.provider.Settings;
 import android.util.Log;
 import android.widget.Button;
 import android.widget.ListView;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import java.io.BufferedReader;
@@ -36,6 +37,8 @@ import java.util.regex.Pattern;
 // MainActivity.java
 public class MainActivity extends AppCompatActivity {
     ListView lrcList;
+    SwipeRefreshLayout swipeRefreshLayout; // 添加下拉刷新布局
+    private TextView tvCurrentFolder; // 添加当前文件夹显示文本
     private LrcFileAdapter adapter;
     List<File> lrcFiles = new ArrayList<>();
     private String selectedFolderPath;
@@ -43,22 +46,23 @@ public class MainActivity extends AppCompatActivity {
     private static final String PREFS_NAME = "LrcPrefs";
     private static final String KEY_LRC_PATH = "lrc_path";
 
-    private static final int REQUEST_CODE_SELECT_FOLDER = 1;
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
         lrcList = findViewById(R.id.lrc_list);
+        swipeRefreshLayout = findViewById(R.id.swipe_refresh_layout); // 初始化下拉刷新布局
         Button btnSelectFolder = findViewById(R.id.btn_select_folder);
+        tvCurrentFolder = findViewById(R.id.tv_current_folder); // 初始化当前文件夹
         // 初始化 SharedPreferences
         SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
-
         // 获取之前保存的路径
         selectedFolderPath = prefs.getString(KEY_LRC_PATH, null);
         //打印路径
         Log.d("MainActivity", "获取之前保存的路径: " + selectedFolderPath);
+        // 显示当前选择的文件夹路径
+        updateCurrentFolderDisplay();
 
 
         // 初始化适配器
@@ -67,15 +71,17 @@ public class MainActivity extends AppCompatActivity {
 
         if (Build.VERSION.SDK_INT >= 30){
             if (!Environment.isExternalStorageManager()){
-                Intent getpermission = new Intent();
-                getpermission.setAction(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION);
-                startActivity(getpermission);
+                Intent getPermission = new Intent();
+                getPermission.setAction(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION);
+                startActivity(getPermission);
             }
         }
 
         // 设置选择文件夹按钮点击事件
         btnSelectFolder.setOnClickListener(v -> selectLrcFolder());
 
+        // 设置下拉刷新监听器
+        setupSwipeRefresh();
 
         // 检查是否有保存的路径
         if (selectedFolderPath != null && !selectedFolderPath.isEmpty()) {
@@ -111,6 +117,9 @@ public class MainActivity extends AppCompatActivity {
                         editor.putString(KEY_LRC_PATH, folderPath);
                         editor.apply();
                         Log.d("MainActivity", "保存的路径: " + folderPath);
+                        // 更新当前选择的文件夹显示
+                        selectedFolderPath = folderPath;
+                        updateCurrentFolderDisplay();
                         loadLrcFiles();
                     } else{
                         String folderPath = treeUri.getPath();
@@ -123,6 +132,9 @@ public class MainActivity extends AppCompatActivity {
                             editor.putString(KEY_LRC_PATH, folderPath);
                             editor.apply();
                             Log.d("MainActivity", "treeUri.getPath()保存的路径: " + folderPath);
+                            // 更新当前选择的文件夹显示
+                            selectedFolderPath = folderPath;
+                            updateCurrentFolderDisplay();
                             loadLrcFiles();
                         }
 
@@ -134,7 +146,82 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
+    // 更新当前文件夹显示
+    private void updateCurrentFolderDisplay() {
+        if (selectedFolderPath != null && !selectedFolderPath.isEmpty()) {
+            // 尝试从 URI 中提取文件夹名称
+            try {
+                Uri folderUri = Uri.parse(selectedFolderPath);
+                String folderName = getFolderNameFromUri(folderUri);
+                tvCurrentFolder.setText(folderName);
+            } catch (Exception e) {
+                // 如果解析失败，显示完整路径
+                tvCurrentFolder.setText(selectedFolderPath);
+            }
+        } else {
+            tvCurrentFolder.setText("未选择文件夹");
+        }
+    }
 
+    // 从 URI 中提取文件夹名称
+    private String getFolderNameFromUri(Uri folderUri) {
+        String path = folderUri.toString();
+
+        // 处理 DocumentFile URI 格式
+        if (path.contains("/tree/")) {
+            // 提取文件夹部分
+            String folderPart = path.substring(path.indexOf("/tree/") + 6);
+            if (folderPart.contains(":")) {
+                folderPart = folderPart.substring(folderPart.indexOf(":") + 1);
+            }
+
+            // 将 % 编码转换为正常字符
+            try {
+                folderPart = java.net.URLDecoder.decode(folderPart, "UTF-8");
+            } catch (Exception e) {
+                // 忽略解码错误
+            }
+
+            // 获取最后一级文件夹名称
+            if (folderPart.contains("/")) {
+                folderPart = folderPart.substring(folderPart.lastIndexOf("/") + 1);
+            }
+
+            return folderPart;
+        }
+
+        return path;
+    }
+
+    private void setupSwipeRefresh() {
+        // 设置下拉刷新监听器
+        swipeRefreshLayout.setOnRefreshListener(new SwipeRefreshLayout.OnRefreshListener() {
+            @Override
+            public void onRefresh() {
+                // 执行刷新操作
+                refreshFileList();
+            }
+        });
+
+        // 设置进度圈颜色
+        swipeRefreshLayout.setColorSchemeResources(
+                android.R.color.holo_blue_bright,
+                android.R.color.holo_green_light,
+                android.R.color.holo_orange_light,
+                android.R.color.holo_red_light
+        );
+    }
+
+    private void refreshFileList() {
+        // 如果已有文件夹路径，则重新加载文件列表
+        if (selectedFolderPath != null && !selectedFolderPath.isEmpty()) {
+            loadLrcFiles();
+        } else {
+            // 如果没有选择文件夹，提示用户选择
+            swipeRefreshLayout.setRefreshing(false);
+            Toast.makeText(this, "请先选择文件夹", Toast.LENGTH_SHORT).show();
+        }
+    }
 
     private void selectLrcFolder() {
 
@@ -149,15 +236,16 @@ public class MainActivity extends AppCompatActivity {
 
     }
 
-
-
-
-
     private void loadLrcFiles() {
+        // 显示刷新动画
+        if (!swipeRefreshLayout.isRefreshing()) {
+            swipeRefreshLayout.setRefreshing(true);
+        }
         try {
             // 检查路径是否有效
             if (selectedFolderPath == null || selectedFolderPath.isEmpty()) {
                 Toast.makeText(this, "请先选择歌词文件夹", Toast.LENGTH_SHORT).show();
+                swipeRefreshLayout.setRefreshing(false);
                 return;
             }
             // 兼容旧版本保存的错误路径
@@ -172,6 +260,7 @@ public class MainActivity extends AppCompatActivity {
                 } else {
                     Toast.makeText(this, "路径格式不正确，请重新选择文件夹", Toast.LENGTH_SHORT).show();
                     requestFolderAccessPermission();
+                    swipeRefreshLayout.setRefreshing(false);
                     return;
                 }
             } else {
@@ -196,6 +285,9 @@ public class MainActivity extends AppCompatActivity {
             Log.e("MainActivity", "加载文件失败", e);
             Toast.makeText(this, "加载文件失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
 
+        } finally {
+            // 确保刷新动画停止
+            swipeRefreshLayout.setRefreshing(false);
         }
     }
     private boolean checkFolderAccessPermission(DocumentFile folder) {
@@ -229,6 +321,8 @@ public class MainActivity extends AppCompatActivity {
         if (lrcFiles.isEmpty()) {
             Toast.makeText(this, "该文件夹中没有找到.lrc文件", Toast.LENGTH_SHORT).show();
         }
+        // 停止刷新动画
+        swipeRefreshLayout.setRefreshing(false);
     }
 
 

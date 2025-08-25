@@ -8,4 +8,6 @@
     <string name="song_name">歌曲名称</string>
     <string name="song_singer">歌手</string>
     <string name="song_content">歌词内容</string>
+    <string name="sel_folder">选择LRC目录</string>
+
 </resources>
