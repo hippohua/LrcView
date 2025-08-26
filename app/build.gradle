@@ -45,5 +45,6 @@ dependencies {
     implementation 'androidx.core:core-ktx:1.10.1'
     implementation 'commons-io:commons-io:2.11.0'
     implementation 'androidx.swiperefreshlayout:swiperefreshlayout:1.1.0'
+    implementation 'com.github.bifan-wei:LrcView:V1.3'
 
 }

@@ -367,6 +367,7 @@ public class MainActivity extends AppCompatActivity {
                         String artist = extractArtist(content.toString());
 
                         // 启动详情页面
+//                        Intent intent = new Intent(MainActivity.this, LrcDetailMasterActivity.class);
                         Intent intent = new Intent(MainActivity.this, LrcDetailActivity.class);
                         intent.putExtra("folder_path", selectedFolderPath);
                         intent.putExtra("lrc_content", content.toString());

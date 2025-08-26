@@ -10,6 +10,9 @@ import android.widget.ImageButton;
 import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.view.MotionEvent;
+import android.view.GestureDetector;
+import android.view.View;
 
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.documentfile.provider.DocumentFile;
@@ -50,7 +53,12 @@ public class LrcDetailActivity extends AppCompatActivity {
     private final Handler handler = new Handler();
     private static final String TAG = "LrcDetailActivity";
     private String folderPath; // 存储目录路径
+    private GestureDetector gestureDetector;
+    private boolean isDragging = false;
+    private float lastY = 0;
+    private long dragStartTime = 0;
 
+    @SuppressLint("ClickableViewAccessibility")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -59,6 +67,19 @@ public class LrcDetailActivity extends AppCompatActivity {
         initializeViews();
         setupListeners();
         loadLrcData();
+        // 初始化手势检测器
+        setupGestureDetector();
+        // 重写 TextView 的 performClick 方法
+        lrcText.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                // 这里可以处理点击事件，如果需要的话
+                // 当前我们只需要满足 performClick 的要求
+            }
+        });
+
+        // 设置歌词区域的手势监听
+        lrcText.setOnTouchListener((v, event) -> handleLrcTouch(event));
         // 启动播放
         togglePlayPause();
     }
@@ -228,11 +249,16 @@ public class LrcDetailActivity extends AppCompatActivity {
 
         // 获取当前行的位置
         int currentLineIndex = -1;
+        LrcLine nextLine = null;
+
         for (int i = 0; i < lines.size(); i++) {
             LrcLine line = lines.get(i);
             if (line.getTime() <= currentTime) {
                 currentLineIndex = i;
             } else {
+                if (i > 0 && currentLineIndex == i - 1) {
+                    nextLine = line;
+                }
                 break;
             }
         }
@@ -246,6 +272,21 @@ public class LrcDetailActivity extends AppCompatActivity {
         // 计算当前行的顶部和底部位置
         int lineTop = layout.getLineTop(currentLineIndex);
 //        int lineBottom = layout.getLineBottom(currentLineIndex);
+        // 如果有下一行，进行插值计算实现更平滑的滚动
+        if (nextLine != null && currentLineIndex + 1 < lines.size()) {
+            LrcLine currentLine = lines.get(currentLineIndex);
+            long timeDiff = nextLine.getTime() - currentLine.getTime();
+            if (timeDiff > 0) {
+                long timePassed = currentTime - currentLine.getTime();
+                float progress = (float) timePassed / timeDiff;
+
+                // 计算下一行的顶部位置
+                int nextLineTop = layout.getLineTop(currentLineIndex + 1);
+
+                // 插值计算当前应该滚动到的位置
+                lineTop = (int) (lineTop + (nextLineTop - lineTop) * progress);
+            }
+        }
 
         // 计算屏幕中心位置
         int screenHeight = lrcText.getHeight();
@@ -289,6 +330,7 @@ public class LrcDetailActivity extends AppCompatActivity {
         loadLrcFromFile(nextFile,nextIndex);
     }
 
+    @SuppressLint("ClickableViewAccessibility")
     private void loadLrcFromFile(File file, int newIndex) {
         try {
             // 读取文件内容
@@ -309,6 +351,17 @@ public class LrcDetailActivity extends AppCompatActivity {
 
             // 更新界面显示
             updateLrcDisplay();
+            // 重写 TextView 的 performClick 方法
+            lrcText.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    // 这里可以处理点击事件，如果需要的话
+                    // 当前我们只需要满足 performClick 的要求
+                }
+            });
+
+            // 设置歌词区域的手势监听
+            lrcText.setOnTouchListener((v, event) -> handleLrcTouch(event));
 
             // 更新歌曲标题
             songTitle.setText(file.getName());
@@ -385,7 +438,7 @@ public class LrcDetailActivity extends AppCompatActivity {
         @Override
         public void run() {
             if (isPlaying) {
-                currentTime += 100;
+                currentTime += 50;
                 if (currentTime >= totalTime) {
                     isPlaying = false;
                     stopPlayback();
@@ -399,11 +452,111 @@ public class LrcDetailActivity extends AppCompatActivity {
                     updateCurrentLine();
                     // 自动滚动到当前行
                     scrollToCurrentLine();
-                    handler.postDelayed(this, 100);
+                    handler.postDelayed(this, 50);
                 }
             }
         }
     };
+
+    private void setupGestureDetector() {
+        gestureDetector = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
+            @Override
+            public boolean onScroll(MotionEvent e1, MotionEvent e2, float distanceX, float distanceY) {
+                // 处理滚动手势
+                return true;
+            }
+
+            @Override
+            public boolean onFling(MotionEvent e1, MotionEvent e2, float velocityX, float velocityY) {
+                // 处理快速滑动手势
+                return true;
+            }
+        });
+    }
+
+    private boolean handleLrcTouch(MotionEvent event) {
+        switch (event.getAction()) {
+            case MotionEvent.ACTION_DOWN:
+                // 用户开始触摸歌词区域
+                lastY = event.getY();
+                dragStartTime = System.currentTimeMillis();
+
+                // 暂停自动播放
+                if (isPlaying) {
+                    handler.removeCallbacks(playbackRunnable);
+                }
+                isDragging = true;
+                return true;
+
+            case MotionEvent.ACTION_MOVE:
+                if (isDragging) {
+                    // 计算垂直移动距离
+                    float deltaY = event.getY() - lastY;
+                    lastY = event.getY();
+
+                    // 根据移动距离调整时间
+                    // 向上滑动是负值（时间前进），向下滑动是正值（时间后退）
+                    long timeChange = (long) (-deltaY * 15); // 调整灵敏度
+
+                    // 更新当前时间
+                    currentTime = Math.max(0, Math.min(totalTime, currentTime + timeChange));
+
+                    // 更新UI
+                    updateCurrentLine();
+                    scrollToCurrentLine();
+                    updateTimeDisplay();
+
+                    // 更新进度条
+                    int progress = (int) (currentTime * 1000 / totalTime);
+                    seekBar.setProgress(progress);
+
+                    return true;
+                }
+                break;
+
+            case MotionEvent.ACTION_UP:
+                // 添加 performClick 调用以解决警告
+                lrcText.performClick();
+            case MotionEvent.ACTION_CANCEL:
+                if (isDragging) {
+                    isDragging = false;
+                    long dragDuration = System.currentTimeMillis() - dragStartTime;
+
+                    // 如果是快速拖动，跳转到指定时间
+                    if (dragDuration < 1000) { // 拖动时间小于1秒认为是快速拖动
+                        // 跳转到指定时间
+                        jumpToTime(currentTime);
+                    }
+
+                    // 恢复播放（如果之前是播放状态）
+                    if (isPlaying) {
+                        handler.post(playbackRunnable);
+                    }
+                }
+                return true;
+        }
+
+        // 让手势检测器处理其他手势
+        return gestureDetector.onTouchEvent(event);
+    }
+
+    // 跳转到指定时间
+    private void jumpToTime(long targetTime) {
+        currentTime = targetTime;
+
+        // 更新UI
+        updateCurrentLine();
+        scrollToCurrentLine();
+        updateTimeDisplay();
+
+        // 更新进度条
+        int progress = (int) (currentTime * 1000 / totalTime);
+        seekBar.setProgress(progress);
+
+        Toast.makeText(this, "跳转到: " + formatTime(currentTime), Toast.LENGTH_SHORT).show();
+    }
+
+
 
     private long extractTotalTime(List<LrcLine> lines) {
         long maxTime = 0;
